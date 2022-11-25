@@ -128,4 +128,4 @@ var searchInsert = function(nums, target) {
 ## 递推
 递推是按照一定的规律来计算序列中的每个项，通常是通过计算前面的一些项来得出序列中的指 定项的值。其思想是把一个复杂的庞大的计算过程转化为简单过程的多次重复，该算法利用了计 算机速度快和不知疲倦的机器特点。
 #### 递推关系式
-递推关系（Recurrence relation），在数学上也就是差分方程（Difference equation），是一种递推地定义一个序列的方程：序列的每一项目是定义为前若干项的函数。 像斐波那契数即为递推关系：<math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><msub><mi>χ</mi><mrow><mi>n</mi><mo>+</mo><mn>2</mn></mrow></msub><mo>=</mo><msub><mi>χ</mi><mrow><mi>n</mi><mo>=</mo><mn>1</mn></mrow></msub><mo>+</mo><msub><mi>χ</mi><mrow><mi>n</mi></mrow></msub></math>
+递推关系（Recurrence relation），在数学上也就是差分方程（Difference equation），是一种递推地定义一个序列的方程：序列的每一项目是定义为前若干项的函数。 像斐波那契数即为递推关系：$\\chi _{n+2} = \\chi _{n=1} + \\chi _{n}$
