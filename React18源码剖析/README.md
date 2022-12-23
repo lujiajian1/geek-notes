@@ -169,3 +169,101 @@ export const LegacyHiddenComponent = 24;
 ## React中常见的数据结构-React 17&18 Lane
 Lane是React中用于表示任务的优先级。优先级分为高优先级与低优先级，当用户操作界面时，为了避免页面卡顿，需要让出线程的执行权，先执行用户触发的事件，这个我们称之为高优先级任务，其它不那么重要的事件我们称之为低优先级任务。
 不同优先级的任务间，会存在一种现象：当执行低优先级任务时，突然插入一个高优先级任务，那么会中断低优先级的任务，先执行高优先级的任务，我们可以将这种现象称为任务插队。当高优先级任务执行完，准备执行低优先级任务时，又插入一个高优先级任务，那么又会执行高优先级任务，如果不断有高优先级任务插队执行，那么低优先级任务便一直得不到执行，我们称这种现象为任务饥饿问题。
+
+## 初次渲染
+#### 1.const root = createRoot(document.getElementById("root"))， ReactDomRoot 实例化，生成根对象root
+* RootType
+```js
+export type RootType = {
+    render(children: ReactNodeList): void,
+    unmount(): void,
+    _internalRoot: FiberRoot | null,
+    ...
+}
+```
+* ReactDOMRoot
+```js
+function ReactDOMRoot(internalRoot: FiberRoot) {
+    this._internalRoot = internalRoot;
+}
+
+ReactDOMHydrationRoot.prototype.render = ReactDOMRoot.prototype.render = function(children: ReactNodeList,): void {
+    const root = this._internalRoot;
+    updateContainer(children, root, null, null);
+} 
+
+ReactDOMHydrationRoot.prototype.unmount = ReactDOMRoot.prototype.unmount = function(): void {
+    const root = this._internalRoot;
+    if (root !== null) {
+        this._internalRoot = null;
+        const container = root.containerInfo;
+        flushSync(() => {
+            updateContainer(null, root, null, null);
+        });
+        unmarkContainerAsRoot(container);
+    }
+}
+```
+#### 2.root.render(jsx)，执行更新，updateContainer
+1. 获取current fiber
+2. 创建一个update：const update = createUpdate(eventTime, lane);
+    1. 初始化一个update对象
+    ```js
+    const update: Update<*> = {
+        eventTime,
+        lane,
+        tag: UpdateState,
+        payload: null,
+        callback: null,
+        next: null,
+    };
+    ```
+    2. 赋值update的payload
+3. update进入队列：enqueueUpdate(current, update, lane); 生成一个环形链表
+4. 处理update更新：scheduleUpdateOnFiber(current, lane, enentTime);发起任务调度：ensureRootlsScheduled(root, eventTime);
+    1. 任务调度：unstable_scheduleCallback;后续查看任务调度
+    2. 任务：performConcurrentWorkOnRoot
+        1. renderRootSync
+        2. workLoopSync
+        ```js
+        function workLoopSync() {
+            // Already timed out, so perform work without checking if we need to yield.
+            while (workInProgress !== null) {
+                performUnitOfWork(workInProgress);
+            }
+        }
+        ```
+        3. performUnitOfWork(workInProgress)
+            1. 更新自己beginWork：检查子节点是否需要更新：三个条件满足一个就行：props、context、是否有别的pending update
+                * 无更新：attemptEarlyBailoutlfNotScheduleUpdate(current, workInProgress, renderLanes)
+                * 要更新：组件类型 fiber.tag 为原生标签，调用 updateHostComponent。1.处理context。2.如果只有一个文本，那么文本当做节点的textContent属性，而不另外创建文本节点。否则创建文本节点。3.协调子节点reconcileChildren。
+                * 要更新：组件类型 fiber.tag 为类组件，调用 updateClassComponent。1.处理context。2.初次渲染，先初始化并存储实例，后执行render函数。中间再执行声明周期、处理state等。3.协调子节点reconcileChildren。
+                * 要更新：组件类型 fiber.tag 为函数组件，调用 updateFunctionComponent。1.处理context。2.函数组件本身，中间需要处理Hooks。3.协调子节点 reconcileChildren。
+            2. 更新全局变量workInProgress
+5. 处理非紧急更新的 transitions：entangleTransitions(root, current, lane);
+#### 3.root.unmount() 卸载函数，不接受callback，如果需要更新前执行callback，请使用useEffect
+```js
+const root = createRoot(document.getElementById("root"));
+
+function AppWithCallbackAfterRender() {
+
+    useEffect(() => {
+        console.log('rendered');
+    });
+
+    return jsx
+}
+
+root.render(<AppWithCallbackAfterRender/>);
+```
+
+## 更新
+1. 主动更新 root.render/setState/forceUpdate
+    1. root.render：流程同初次渲染的12345
+    2. setState
+        * 类组件的setState，流程同初次渲染的12345
+        * 函数组件的setState
+            * useState/useReducer：流程同初次渲染的1234，只是5非紧急更新的处理函数是 entangleTransitionUpdate(root, queue, lane);因为与Hook相关，这里只更新当前函数组件相关，因此处理的queue是来自本函数组件的。
+            * useSyncExternalStore：流程同render上1234，没有5，外界的store
+    3. 类组件的forceUpdate
+2. 被动更新 子组件的props/context value 变化
