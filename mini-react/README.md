@@ -101,23 +101,55 @@ export const CacheComponent = 24;
 
 ## 生成fiber
 ```js
-import { Placement } from "./utils";
-export default function createFiber(vnode, returnFiber) {
+import {
+  ClassComponent,
+  Fragment,
+  FunctionComponent,
+  HostComponent,
+  HostText,
+} from "./ReactWorkTags";
+import { isFn, isStr, isUndefined, Placement } from "./utils";
+
+export function createFiber(vnode, returnFiber) {
   const fiber = {
+    // 类型
     type: vnode.type,
     key: vnode.key,
+    // 属性
     props: vnode.props,
-    stateNode: null, // 原生标签时候指dom节点，类组件时候指的是实例
-    child: null, // 第一个子fiber
-    sibling: null, // 下一个兄弟fiber
-    return: returnFiber, // 父fiber
-    // 标记节点是什么类型的
+    // 不同类型的组件， stateNode也不同
+    // 原生标签 dom节点
+    // class 实例
+    stateNode: null,
+
+    // 第一个子fiber
+    child: null,
+    // 下一个兄弟节点
+    sibling: null,
+    return: returnFiber,
+
     flags: Placement,
-    // 老节点
-    alternate: null,
-    deletions: null, // 要删除子节点 null或者[]
-    index: null, //当前层级下的下标，从0开始
+
+    // 记录节点在当前层级下的位置
+    index: null,
   };
+
+  const { type } = vnode;
+
+  if (isStr(type)) {
+    fiber.tag = HostComponent;
+  } else if (isFn(type)) {
+    // todo 函数以及类组件
+    fiber.tag = type.prototype.isReactComponent
+      ? ClassComponent
+      : FunctionComponent;
+  } else if (isUndefined(type)) {
+    fiber.tag = HostText;
+    fiber.props = { children: vnode };
+  } else {
+    fiber.tag = Fragment;
+  }
+
   return fiber;
 }
 ```
@@ -128,19 +160,30 @@ export default function createFiber(vnode, returnFiber) {
 let wip = null;
 
 function performUnitOfWork() {
-  // todo 1. 执行当前任务wip
-  // 判断wip是什么类型的组件
-  const { type } = wip;
-  if (isStr(type)) {
-    // 原生标签
-    updateHostComponent(wip);
-  } else if (isFn(type)) {
-    type.prototype.isReactComponent
-      ? updateClassComponent(wip)
-      : updateFunctionComponent(wip);
+  const { tag } = wip;
+  // todo 1. 更新当前组件
+  switch (tag) {
+    case HostComponent:
+      updateHostComponent(wip);
+      break;
+
+    case FunctionComponent:
+      updateFunctionComponent(wip);
+      break;
+
+    case ClassComponent:
+      updateClassComponent(wip);
+      break;
+    case Fragment:
+      updateFragmentComponent(wip);
+      break;
+    case HostText:
+      updateHostTextComponent(wip);
+      break;
+    default:
+      break;
   }
-  // todo 2. 更新wip
-  // 深度优先遍历（王朝的故事）
+  // todo 2. 下一个更新谁 深度优先遍历 （国王的故事）
   if (wip.child) {
     wip = wip.child;
     return;
@@ -162,24 +205,37 @@ function performUnitOfWork() {
 // utils.js
 // ! flags定义为二进制，而不是字符串或者单个数字，一方面原因是因为二进制单个数字具有唯一性、某个范围内的组合同样具有唯一性，另一方原因在于简洁方便、且速度快。
 export const NoFlags = /*                      */ 0b00000000000000000000;
+// 新增、插入
 export const Placement = /*                    */ 0b0000000000000000000010; // 2
+// 节点更新属性
 export const Update = /*                       */ 0b0000000000000000000100; // 4
+// 删除
 export const Deletion = /*                     */ 0b0000000000000000001000; // 8
-
 export function isStr(s) {
   return typeof s === "string";
 }
-
 export function isStringOrNumber(s) {
   return typeof s === "string" || typeof s === "number";
 }
-
 export function isFn(fn) {
   return typeof fn === "function";
 }
-
 export function isArray(arr) {
   return Array.isArray(arr);
+}
+export function isUndefined(s) {
+  return s === undefined;
+}
+export function updateNode(node, nextVal) {
+  Object.keys(nextVal).forEach((k) => {
+    if (k === "children") {
+      if (isStringOrNumber(nextVal[k])) {
+        node.textContent = nextVal[k];
+      }
+    } else {
+      node[k] = nextVal[k];
+    }
+  });
 }
 ```
 
@@ -188,6 +244,16 @@ export function isArray(arr) {
 ## ReactDOM.createRoot替换ReactDOM.render
 React18中将会使用最新的ReactDOM.createRoot作为根渲染函数，ReactDOM.render作为兼容，依然会存在，但是会成为遗留模式，开发环境下会出现warning。
 ```jsx
+const jsx = (
+  <div className="border">
+    <h1>react</h1>
+    <a href="https://github.com/bubucuo/mini-react">mini react</a>
+    <FunctionComponent name="函数组件" />
+    <ClassComponent name="类组件" />
+    <FragmentComponent />
+  </div>
+);
+
 ReactDOM.createRoot(document.getElementById("root")).render(jsx);
 ```
 
@@ -246,6 +312,59 @@ Fiber 是 React 16 中新的协调引擎。它的主要目的是使 Virtual DOM 
 
 ## 提交阶段
 ```jsx
+let wip = null; // work in progress 当前正在工作中的
+let wipRoot = null;
+// 初次渲染和更新
+export function scheduleUpdateOnFiber(fiber) {
+  wip = fiber;
+  wipRoot = fiber;
+}
+
+function performUnitOfWork() {
+  const { tag } = wip;
+
+  // todo 1. 更新当前组件
+  switch (tag) {
+    case HostComponent:
+      updateHostComponent(wip);
+      break;
+
+    case FunctionComponent:
+      updateFunctionComponent(wip);
+      break;
+
+    case ClassComponent:
+      updateClassComponent(wip);
+      break;
+    case Fragment:
+      updateFragmentComponent(wip);
+      break;
+    case HostText:
+      updateHostTextComponent(wip);
+      break;
+    default:
+      break;
+  }
+
+  // todo 2. 下一个更新谁 深度优先遍历 （国王的故事）
+  if (wip.child) {
+    wip = wip.child;
+    return;
+  }
+
+  let next = wip;
+
+  while (next) {
+    if (next.sibling) {
+      wip = next.sibling;
+      return;
+    }
+    next = next.return;
+  }
+
+  wip = null;
+}
+
 function workLoop(IdleDeadline) {
   while (wip && IdleDeadline.timeRemaining() > 0) {
     performUnitOfWork();
@@ -268,18 +387,25 @@ function commitWorker(wip) {
     return;
   }
   // 1. 更新自己
-
+  const parentNode = getParentNode(wip.return); /// wip.return.stateNode;
   const { flags, stateNode } = wip;
-
-  let parentNode = wip.return.stateNode;
-  if (flags && Placement && stateNode) {
+  if (flags & Placement && stateNode) {
     parentNode.appendChild(stateNode);
   }
-
   // 2. 更新子节点
   commitWorker(wip.child);
   // 2. 更新兄弟节点
   commitWorker(wip.sibling);
+}
+
+function getParentNode(wip) {
+  let tem = wip;
+  while (tem) {
+    if (tem.stateNode) {
+      return tem.stateNode;
+    }
+    tem = tem.return;
+  }
 }
 ```
 
@@ -320,12 +446,16 @@ function reconcileChildren(wip, children) {
   }
 
   const newChildren = isArray(children) ? children : [children];
-  let previousNewFiber = null; //记录上一次的fiber
+  let previousNewFiber = null;
   for (let i = 0; i < newChildren.length; i++) {
     const newChild = newChildren[i];
+    if (newChild == null) {
+      continue;
+    }
     const newFiber = createFiber(newChild, wip);
 
-    if (i === 0) {
+    if (previousNewFiber === null) {
+      // head node
       wip.child = newFiber;
     } else {
       previousNewFiber.sibling = newFiber;
