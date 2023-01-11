@@ -724,6 +724,482 @@ export function updateFragmentComponent(wip) {
 }
 ```
 
+# React任务调度与最小堆
+[三分钟带你彻底读懂React任务调度以及背后的算法](https://juejin.cn/post/7051878454433677319)
+
+# 任务调度
+
+## [Performance.now()](https://developer.mozilla.org/zh-CN/docs/Web/API/Performance/now)
+和JavaScript中其他可用的时间类函数（比如 Date.now ）不同的是，window.performance.now() 返回的时间戳没有被限制在一毫秒的精确度内，相反，它们以浮点数的形式表示时间，精度最高可达微秒级。
+另外一个不同点是， window.performance.now() 是以一个恒定的速率慢慢增加的，它不会受到系统时间的影响（系统时钟可能会被手动调整或被NTP等软件篡改）。另外，performance.timing.navigationStart + performance.now() 约等于 Date.now()。
+
+## [MessageChannel](https://developer.mozilla.org/zh-CN/docs/Web/API/MessageChannel)
+![messageChannel](https://github.com/lujiajian1/geek-notes/blob/main/img/messageChannel.png)
+```js
+const channel = new MessageChannel();
+const {port1, port2} = channel;
+port1.onmessage = function(msgEvent) {
+  console.log("port1 收到消息：" + msgEvent.data); //sy-log
+  port1.postMessage("port2 请相应");
+};
+
+port2.onmessage = function(msgEvent) {
+  console.log("port2 收到消息：", msgEvent.data); //sy-log
+};
+
+port2.postMessage("port1 请相应");
+```
+
+
+
+## 调度
+React下有个包叫scheduler，它用于处理浏览器环境中的任务调度，现在只用于了React内部，但是据计划是要做成通用库的。现在开放的公共API还没有完成，还处于开发阶段。
+```js
+// 实现最小堆
+// 返回最小堆堆顶元素
+export function peek(heap) {
+  return heap.length === 0 ? null : heap[0];
+}
+
+// 往最小堆中插入元素
+// 1. 把node插入数组尾部
+// 2.  往上调整最小堆（比较子节点和父节点谁最小，如果父节点不是最小，则交换位置，并继续往上调整）
+export function push(heap, node) {
+  let index = heap.length;
+  heap.push(node);
+  siftUp(heap, node, index);
+}
+
+function siftUp(heap, node, i) {
+  let index = i;
+
+  while (index > 0) {
+    const parentIndex = (index - 1) >> 1;
+    const parent = heap[parentIndex];
+    if (compare(parent, node) > 0) {
+      // parent>node， 不符合最小堆条件
+      heap[parentIndex] = node;
+      heap[index] = parent;
+      index = parentIndex;
+    } else {
+      return;
+    }
+  }
+}
+
+// 删除堆顶元素
+// 1. 最后一个元素覆盖堆顶
+// 2. 向下调整
+export function pop(heap) {
+  if (heap.length === 0) {
+    return null;
+  }
+  const fisrt = heap[0];
+  const last = heap.pop();
+
+  if (fisrt !== last) {
+    heap[0] = last;
+    siftDown(heap, last, 0);
+  }
+
+  return fisrt;
+}
+
+function siftDown(heap, node, i) {
+  let index = i;
+  const len = heap.length;
+  const halfLen = len >> 1;
+  while (index < halfLen) {
+    const leftIndex = (index + 1) * 2 - 1;
+    const rightIndex = leftIndex + 1;
+    const left = heap[leftIndex];
+    const right = heap[rightIndex];
+
+    if (compare(left, node) < 0) {
+      // left < node,
+      // ? left、right
+      if (rightIndex < len && compare(right, left) < 0) {
+        // right 最小， 交换right和parent
+        heap[index] = right;
+        heap[rightIndex] = node;
+        index = rightIndex;
+      } else {
+        // 没有right或者left<right
+        // 交换left和parent
+        heap[index] = left;
+        heap[leftIndex] = node;
+        index = leftIndex;
+      }
+    } else if (rightIndex < len && compare(right, node) < 0) {
+      // right 最小， 交换right和parent
+      heap[index] = right;
+      heap[rightIndex] = node;
+      index = rightIndex;
+    } else {
+      // parent最小
+      return;
+    }
+  }
+}
+
+function compare(a, b) {
+  //   return a - b;
+  const diff = a.sortIndex - b.sortIndex;
+  return diff !== 0 ? diff : a.id - b.id;
+}
+```
+
+# 精通Hooks
+
+## Hook精讲
+[Hook的what、why、how、where](https://www.bilibili.com/video/BV1rK411F7x3?p=7)
+
+## Hook简介
+Hook 是 React 16.8 的新增特性。它可以让你在不编写 class 的情况下使用 state 以及其他的 React 特性。
+```jsx
+import React, { useState } from 'react';
+
+function Example() {
+  // 声明一个新的叫做 “count” 的 state 变量
+  const [count, setCount] = useState(0);  
+  return (
+    <div>
+      <p>You clicked {count} times</p>
+      <button onClick={() => setCount(count + 1)}>
+        Click me {a}
+      </button>
+    </div>
+  );
+}
+```
+
+## 视频介绍
+在 React Conf 2018 上，Sophie Alpert 和 Dan Abramov 介绍了 Hook，紧接着 Ryan Florence 演示了如何使用 Hook 重构应用。你可以在这里看到这个视频： **https://www.youtube.com/embed/dpw9EHDh2bM**
+
+## 没有破坏性改动
+在我们继续之前，请记住 Hook 是：
+* 完全可选的：你无需重写任何已有代码就可以在一些组件中尝试 Hook。但是如果你不想，你不必现在就去学习或使用 Hook。
+* 100% 向后兼容的：** Hook 不包含任何破坏性改动。
+* 现在可用：Hook 已发布于 v16.8.0。
+* 没有计划从 React 中移除 class。
+* Hook 不会影响你对 React 概念的理解。** 恰恰相反，Hook 为已知的 React 概念提供了更直接的 API：props， state，context，refs 以及生命周期。稍后我们将看到，Hook 还提供了一种更强大的方式来组合他们。
+
+## Hook解决了什么问题
+Hook 解决了我们那些年来编写和维护成千上万的组件时遇到的各种各样看起来不相关的问题。无论你正在学习 React，或每天使用，或者更愿尝试另一个和 React 有相似组件模型的框架，你都可能对这些问题似曾相识。
+
+#### 在组件之间复用状态逻辑很难
+React 没有提供将可复用性行为“附加”到组件的途径（例如，把组件连接到 store）。如果你使用过 React 一段时间，你也许会熟悉一些解决此类问题的方案，比如 [render props](https://zh-hans.reactjs.org/docs/render-props.html) 和 [高阶组件](https://zh-hans.reactjs.org/docs/higher-order-components.html)。但是这类方案需要重新组织你的组件结构，这可能会很麻烦，使你的代码难以理解。如果你在 React DevTools 中观察过 React 应用，你会发现由 providers，consumers，高阶组件，render props 等其他抽象层组成的组件会形成“嵌套地狱”。尽管我们可以[在 DevTools 过滤掉它们](https://github.com/facebook/react-devtools/pull/503)，但这说明了一个更深层次的问题：React 需要为共享状态逻辑提供更好的原生途径。
+你可以使用 Hook 从组件中提取状态逻辑，使得这些逻辑可以单独测试并复用。**Hook 使你在无需修改组件结构的情况下复用状态逻辑。** 这使得在组件间或社区内共享 Hook 变得更便捷。
+具体将在[自定义 Hook](https://zh-hans.reactjs.org/docs/hooks-custom.html) 中对此展开更多讨论。
+
+#### 复杂组件变得难以理解
+我们经常维护一些组件，组件起初很简单，但是逐渐会被状态逻辑和副作用充斥。每个生命周期常常包含一些不相关的逻辑。例如，组件常常在 componentDidMount 和 componentDidUpdate 中获取数据。但是，同一个 componentDidMount 中可能也包含很多其它的逻辑，如设置事件监听，而之后需在 componentWillUnmount 中清除。相互关联且需要对照修改的代码被进行了拆分，而完全不相关的代码却在同一个方法中组合在一起。如此很容易产生 bug，并且导致逻辑不一致。
+在多数情况下，不可能将组件拆分为更小的粒度，因为状态逻辑无处不在。这也给测试带来了一定挑战。同时，这也是很多人将 React 与状态管理库结合使用的原因之一。但是，这往往会引入了很多抽象概念，需要你在不同的文件之间来回切换，使得复用变得更加困难。
+为了解决这个问题，**Hook 将组件中相互关联的部分拆分成更小的函数（比如设置订阅或请求数据）**，而并非强制按照生命周期划分。你还可以使用 reducer 来管理组件的内部状态，使其更加可预测。
+我们将在[使用 Effect Hook](https://zh-hans.reactjs.org/docs/hooks-effect.html#tip-use-multiple-effects-to-separate-concerns) 中对此展开更多讨论。
+
+#### 难以理解的 class
+除了代码复用和代码管理会遇到困难外，我们还发现 class 是学习 React 的一大屏障。你必须去理解 JavaScript 中 **this** 的工作方式，这与其他语言存在巨大差异。还不能忘记绑定事件处理器。没有稳定的[语法提案](https://babeljs.io/docs/en/babel-plugin-transform-class-properties/)，这些代码非常冗余。大家可以很好地理解 props，state 和自顶向下的数据流，但对 class 却一筹莫展。即便在有经验的 React 开发者之间，对于函数组件与 class 组件的差异也存在分歧，甚至还要区分两种组件的使用场景。
+另外，React 已经发布五年了，我们希望它能在下一个五年也与时俱进。就像 [Svelte](https://svelte.dev/)，[Angular](https://angular.io/)，[Glimmer](https://glimmerjs.com/)等其它的库展示的那样，组件[预编译](https://en.wikipedia.org/wiki/Ahead-of-time_compilation)会带来巨大的潜力。尤其是在它不局限于模板的时候。最近，我们一直在使用 [Prepack](https://prepack.io/) 来试验 [component folding](https://github.com/facebook/react/issues/7323)，也取得了初步成效。但是我们发现使用 class 组件会无意中鼓励开发者使用一些让优化措施无效的方案。class 也给目前的工具带来了一些问题。例如，class 不能很好的压缩，并且会使热重载出现不稳定的情况。因此，我们想提供一个使代码更易于优化的 API。
+为了解决这些问题，**Hook 使你在非 class 的情况下可以使用更多的 React 特性。** 从概念上讲，React 组件一直更像是函数。而 Hook 则拥抱了函数，同时也没有牺牲 React 的精神原则。Hook 提供了问题的解决方案，无需学习复杂的函数式或响应式编程技术。
+
+## Hook API（17.0.2）
+* 基础 Hook
+  * [useState](https://zh-hans.reactjs.org/docs/hooks-reference.html#usestate)
+  * [useEffect](https://zh-hans.reactjs.org/docs/hooks-reference.html#useeffect)
+  * [useContext](https://zh-hans.reactjs.org/docs/hooks-reference.html#usecontext)
+* 额外的 Hook
+  * [useReducer](https://zh-hans.reactjs.org/docs/hooks-reference.html#usereducer)
+  * [useCallback](https://zh-hans.reactjs.org/docs/hooks-reference.html#usecallback)
+  * [useMemo](https://zh-hans.reactjs.org/docs/hooks-reference.html#usememo)
+  * [useRef](https://zh-hans.reactjs.org/docs/hooks-reference.html#useref)
+  * [useImperativeHandle](https://zh-hans.reactjs.org/docs/hooks-reference.html#useimperativehandle)
+  * [useLayoutEffect](https://zh-hans.reactjs.org/docs/hooks-reference.html#uselayouteffect)
+
+## Hook原理
+```jsx
+fiber.memorizedState(hook0)-> next(hook1)-> next(hook2)->next(hook3)(workInProgressHook)
+//let workInProgressHook = null
+//hook3
+hook = {
+  memorizedState: null, // state
+  next: null // 下一个hook
+}
+function FunctionalComponent () {
+  const [state1, setState1] = useState(1)
+  const [state2, setState2] = useState(2)
+  const [state3, setState3] = useState(3)
+
+  return ...
+}
+hook1 => Fiber.memoizedState
+state1 === hook1.memoizedState
+hook1.next => hook2
+state2 === hook2.memoizedState
+hook2.next => hook3
+state3 === hook2.memoizedState
+```
+
+# 实现useReducer
+
+## useReducer
+[useState](https://zh-hans.reactjs.org/docs/hooks-reference.html#usestate) 的替代方案。它接收一个形如 (state, action) => newState 的 reducer，并返回当前的 state 以及与其配套的 dispatch 方法。（如果你熟悉 Redux 的话，就已经知道它如何工作了。）
+在某些场景下，useReducer 会比 useState 更适用，例如 state 逻辑较复杂且包含多个子值，或者下一个 state 依赖于之前的 state 等。并且，使用 useReducer 还能给那些会触发深更新的组件做性能优化，因为[你可以向子组件传递 dispatch 而不是回调函数](https://zh-hans.reactjs.org/docs/hooks-faq.html#how-to-avoid-passing-callbacks-down) 。
+```jsx
+const [state, dispatch] = useReducer(reducer, initialArg, init);
+```
+
+## 实现useReducer
+```jsx
+import {scheduleUpdateOnFiber} from "./ReactFiberWorkLoop";
+let workInProgressHook = null;
+// 当前正在工作的fiber
+let currentlyRenderingFiber = null;
+
+export function renderHooks(wip) {
+  currentlyRenderingFiber = wip;
+  currentlyRenderingFiber.memoizedState = null;
+  workInProgressHook = null;
+}
+
+// fiber(memoizedState)->hook0(next)->hook1(next)->hook2(next)->null
+// workInProgressHook=hook2 当前的hook
+function updateWorkInProgressHook() {
+  let hook;
+  // todo
+  const current = currentlyRenderingFiber.alternate;
+  if (current) {
+    // 不是初次渲染，是更新，意味着可以在老hook基础上更新
+    currentlyRenderingFiber.memoizedState = current.memoizedState;
+    if (workInProgressHook) {
+      // 不是第一个hook
+      hook = workInProgressHook = workInProgressHook.next;
+    } else {
+      // 是第一个hook
+      hook = workInProgressHook = current.memoizedState;
+    }
+  } else {
+    // 是初次渲染，需要初始化hook
+    hook = {
+      memoizedState: null, //状态值
+      next: null, // 指向下一个hook或者null
+    };
+    if (workInProgressHook) {
+      // 不是第一个hook
+      workInProgressHook = workInProgressHook.next = hook;
+    } else {
+      // 是第一个hook
+      workInProgressHook = currentlyRenderingFiber.memoizedState = hook;
+    }
+  }
+
+  return hook;
+}
+
+export function useReducer(reducer, initialState) {
+  /**
+   * memoizedState 状态值
+   * next 指向下一个hook
+   */
+  const hook = updateWorkInProgressHook();
+
+  if (!currentlyRenderingFiber.alternate) {
+    // 组件初次渲染
+    hook.memoizedState = initialState;
+  }
+
+  const dispatch = (action) => {
+    hook.memoizedState = reducer(hook.memoizedState, action);
+    scheduleUpdateOnFiber(currentlyRenderingFiber);
+  };
+
+  return [hook.memoizedState, dispatch];
+}
+```
+
+## 更新属性
+```js
+export function updateNode(node, prevVal, nextVal) {
+  Object.keys(prevVal)
+    // .filter(k => k !== "children")
+    .forEach((k) => {
+      if (k === "children") {
+        // 有可能是文本
+        if (isStringOrNumber(prevVal[k])) {
+          node.textContent = "";
+        }
+      } else if (k.slice(0, 2) === "on") {
+        const eventName = k.slice(2).toLocaleLowerCase();
+        node.removeEventListener(eventName, prevVal[k]);
+      } else {
+        if (!(k in nextVal)) {
+          node[k] = "";
+        }
+      }
+    });
+
+  Object.keys(nextVal)
+    // .filter(k => k !== "children")
+    .forEach((k) => {
+      if (k === "children") {
+        // 有可能是文本
+        if (isStringOrNumber(nextVal[k])) {
+          node.textContent = nextVal[k] + "";
+        }
+      } else if (k.slice(0, 2) === "on") {
+        const eventName = k.slice(2).toLocaleLowerCase();
+        node.addEventListener(eventName, nextVal[k]);
+      } else {
+        node[k] = nextVal[k];
+      }
+    });
+}
+```
+# 实现useState
+
+## useState
+返回一个 state，以及更新 state 的函数。在初始渲染期间，返回的状态 (`state`) 与传入的第一个参数 (`initialState`) 值相同。
+```jsx
+const [state, setState] = useState(initialState);
+```
+
+## 实现useState
+```jsx
+function dispatchReducerAction(fiber, hook, reducer, action) {
+  hook.memorizedState = reducer ? reducer(hook.memorizedState) : action;
+  fiber.alternate = { ...fiber };
+  fiber.sibling = null;
+  scheduleUpdateOnFiber(fiber);
+}
+
+export function useState(initalState) {
+  return useReducer(null, initalState);
+}
+```
+
+# 节点的删除与更新
+如遇到下面的情况，需要精确考虑下节点的删除与更新。
+```jsx
+function FunctionComponent(props) {
+  const [count, setCount] = useReducer((x) => x + 1, 0);
+  const [count2, setCount2] = useState(0);
+
+  return (
+    <div className="border">
+      <p>{props.name}</p>
+      <button onClick={() => setCount()}>{count}</button>
+      <button onClick={() => setCount2(count2 + 1)}>{count2}</button>
+      {count % 2 ? <div>omg</div> : <span>ooo</span>}
+    </div>
+  );
+}
+```
+
+## 删除节点
+```jsx
+// 删除单个节点
+function deleteChild(returnFiber, childToDelete) {
+  // returnFiber.deletoins = [...]
+  const deletions = returnFiber.deletions;
+  if (deletions) {
+    returnFiber.deletions.push(childToDelete);
+  } else {
+    returnFiber.deletions = [childToDelete];
+  }
+}
+
+function reconcileChildren(wip, children) {
+  if (isStringOrNumber(children)) {
+    return;
+  }
+
+  const newChildren = isArray(children) ? children : [children];
+  let previousNewFiber = null; //记录上一次的fiber
+  let oldFiber = wip.alternate?.child;
+  for (let i = 0; i < newChildren.length; i++) {
+    const newChild = newChildren[i];
+    const newFiber = createFiber(newChild, wip);
+
+    const same = sameNode(newFiber, oldFiber);
+
+    if (same) {
+      Object.assign(newFiber, {
+        stateNode: oldFiber.stateNode,
+        alternate: oldFiber,
+        flags: Update,
+      });
+    }
+    if (!same && oldFiber) {
+      // 删除节点
+      deleteChild(wip, oldFiber);
+    }
+
+    if (oldFiber) {
+      oldFiber = oldFiber.sibling;
+    }
+
+    if (i === 0) {
+      wip.child = newFiber;
+    } else {
+      previousNewFiber.sibling = newFiber;
+    }
+
+    previousNewFiber = newFiber;
+  }
+}
+```
+
+## 节点的更新
+```js
+function commitWorker(wip) {
+  if (!wip) {
+    return;
+  }
+  // 1. 更新自己
+  const { flags, stateNode } = wip;
+  // 父dom节点
+  let parentNode = getParentNode(wip.return); // wip.return.stateNode;
+  if (flags & Placement && stateNode) {
+    parentNode.appendChild(stateNode);
+  }
+  if (flags & Update && stateNode) {
+    updateNode(stateNode, wip.alternate.props, wip.props);
+  }
+  if (wip.deletions) {
+    commitDeletion(wip.deletions, stateNode || parentNode);
+  }
+  // 2. 更新子节点
+  commitWorker(wip.child);
+  // 2. 更新兄弟节点
+  commitWorker(wip.sibling);
+}
+
+function getParentNode(wip) {
+  let tem = wip;
+  while (tem) {
+    if (tem.stateNode) {
+      return tem.stateNode;
+    }
+    tem = tem.return;
+  }
+}
+
+// deletions: fiber
+function commitDeletion(deletions, parentNode) {
+  for (let i = 0; i < deletions.length; i++) {
+    const deletion = deletions[i];
+    parentNode.removeChild(getStateNode(deletion));
+  }
+}
+
+function getStateNode(fiber) {
+  let tem = fiber;
+  while (!tem.stateNode) {
+    tem = tem.child;
+  }
+  return tem.stateNode;
+}
+```
 
 
 
