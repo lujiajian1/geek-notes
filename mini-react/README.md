@@ -1077,6 +1077,109 @@ export function useState(initalState) {
 }
 ```
 
+# 实现useEffect
+
+## useEffect
+```js
+useEffect(didUpdate);
+```
+该 Hook 接收一个包含命令式、且可能有副作用代码的函数。 
+在函数组件主体内（这里指在 React 渲染阶段）改变 DOM、添加订阅、设置定时器、记录日 志以及执行其他包含副作用的操作都是不被允许的，因为这可能会产生莫名其妙的 bug 并破坏 UI 的一致性。 
+使用 useEffect 完成副作用操作。赋值给 useEffect 的函数会在组件渲染到屏幕之后延迟执行。你可以把 effect 看作从 React 的纯函数式世界通往命令式世界的逃生通道。
+默认情况下，effect 将在每轮渲染结束后执行，但你可以选择让它在只有某些值改变的时候才执行。
+
+## 实现useEffect
+```js
+export const HookPassive = /*   */ 0b100;
+export function areHookInputsEqual(nextDeps, prevDeps) {
+  if (prevDeps == null) {
+    return false;
+  }
+
+  for (let i = 0; i < prevDeps.length && i < nextDeps.length; i++) {
+    if (Object.is(nextDeps[i], prevDeps[i])) {
+      continue;
+    }
+    return false;
+  }
+
+  return true;
+}
+function updateWorkInProgressHook() {
+  let hook;
+
+  const current = currentlyRenderingFiber.alternate;
+  if (current) {
+    // 组件更新
+    currentlyRenderingFiber.memorizedState = current.memorizedState;
+    if (workInProgressHook) {
+      workInProgressHook = hook = workInProgressHook.next;
+      currentHook = currentHook.next;
+    } else {
+      // hook0
+      workInProgressHook = hook = currentlyRenderingFiber.memorizedState;
+      currentHook = current.memorizedState;
+    }
+  } else {
+    // 组件初次渲染
+    currentHook = null;
+
+    hook = {
+      memorizedState: null, // state effect
+      next: null, // 下一个hook
+    };
+    if (workInProgressHook) {
+      workInProgressHook = workInProgressHook.next = hook;
+    } else {
+      // hook0
+      workInProgressHook = currentlyRenderingFiber.memorizedState = hook;
+    }
+  }
+
+  return hook;
+}
+function updateEffectImp(hooksFlags, create, deps) {
+  const hook = updateWorkInProgressHook();
+
+  if (currentHook) {
+    const prevEffect = currentHook.memorizedState;
+    if (deps) {
+      const prevDeps = prevEffect.deps;
+      if (areHookInputsEqual(deps, prevDeps)) {
+        return;
+      }
+    }
+  }
+
+  const effect = {hooksFlags, create, deps};
+
+  hook.memorizedState = effect;
+
+  if (hooksFlags & HookPassive) {
+    currentlyRenderingFiber.updateQueueOfEffect.push(effect);
+  } else if (hooksFlags & HookLayout) {
+    currentlyRenderingFiber.updateQueueOfLayout.push(effect);
+  }
+}
+export function useEffect(create, deps) {
+  return updateEffectImp(HookPassive, create, deps);
+}
+```
+
+# 实现useLayoutEffect
+
+## useLayoutEffect
+其函数签名与 useEffect 相同，但它会在所有的 DOM 变更之后同步调用 effect。可以使用它 来读取 DOM 布局并同步触发重渲染。在浏览器执行绘制之前， useLayoutEffect 内部的更新计 划将被同步刷新。
+尽可能使用标准的 useEffect 以避免阻塞视觉更新。
+
+## 实现useEffect
+```js
+export const HookLayout = /*    */ 0b010;
+export function useLayoutEffect(create, deps) {
+  return updateEffectImp(HookLayout, create, deps);
+}
+```
+
 # 节点的删除与更新
 如遇到下面的情况，需要精确考虑下节点的删除与更新。
 ```jsx
@@ -1201,12 +1304,556 @@ function getStateNode(fiber) {
 }
 ```
 
+## 删除多个老节点
+```js
+// old 0 1 2 3 4
+// new 0 1 2
+function FunctionComponent(props) {
+    const [count, setCount] = useReducer((x) => x + 1, 0); 
+    const [count2, setCount2] = useState(4); 
+    return ( 
+        <div className="border"> 
+            <p>{props.name}</p> 
+            <button onClick={() => setCount()}>{count}</button> 
+            <button onClick={() => { if (count2 === 0) { setCount2(4); } else { setCount2(count2 - 2); } }} > 
+                {count2} 
+            </button> 
+            {count % 2 ? <div>omg</div> : <span>123</span>} 
+            <ul>
+                {[0, 1, 2, 3, 4].map((item) => { return count2 >= item ? <li key={item}>{item}</li> : null; })} 
+            </ul> 
+        </div> 
+    ); 
+}
 
+// 此时需要多节点删除：
+function deleteRemainingChildren(returnFiber, currentFirstChild) {
+  let childToDelete = currentFirstChild;
 
+  while (childToDelete) {
+    deleteChild(returnFiber, childToDelete);
+    childToDelete = childToDelete.sibling;
+  }
+}
 
+export function reconcileChildren(returnFiber, children) {
+  if (isStringOrNumber(children)) {
+    return;
+  }
 
+  const newChildren = isArray(children) ? children : [children];
+  // oldfiber的头结点
+  let oldFiber = returnFiber.alternate?.child;
+  let previousNewFiber = null;
+  let newIndex = 0;
 
+  // *1. 从左边往右遍历，比较新老节点，如果节点可以复用，继续往右，否则就停止
+    for (oldFiber = 0; newIndex < newChildren.length; newIndex++) {
+        const newChild = newChildren[newIndex];
+        if (newChild == null) {
+            continue;
+        }
+        const newFiber = createFiber(newChild, returnFiber);
+        const same = sameNode(newChild, oldFiber);
+        if (same) { 
+            Object.assign(newFiber, { 
+                stateNode: oldFiber.stateNode, 
+                alternate: oldFiber, 
+                flags: Update, 
+            }); 
+        }
+        if (!same && oldFiber) { 
+            deleteChild(returnFiber, oldFiber);
+        }
+        if (oldFiber) {
+            oldFiber = oldFiber.sibling; 
+        }
+        if (previousNewFiber == null) {
+            returnFiber.child = newFiber;
+        } else {
+            previousNewFiber.sibling = newFiber;
+        }
+        previousNewFiber = newFiber;
+    }
 
+    if (newIndex === newChildren.length) { 
+        deleteRemainingChildren(returnFiber, oldFiber);
+        return; 
+    } 
+}
+```
+
+# 真正的React VDOM DIFF
+
+## 资源
+[带你彻底读懂React VDOM DIFF](https://mp.weixin.qq.com/s/TwY0RJT9e9_85RIwGXoG3w)
+[React VDOM DIFF](https://www.processon.com/view/link/61b20cab1e08534ca6ddc6f8)
+![reactdiff](https://github.com/lujiajian1/geek-notes/blob/main/img/reactdiff.png)
+
+## 实现
+```tsx
+// 测试代码
+// old 0 1 2 3 4
+// new 0 1 3 4
+function FunctionComponent(props) {
+    const [count, setCount] = useReducer((x) => x + 1, 0); 
+    const [count2, setCount2] = useState(4); 
+    return ( 
+        <div className="border"> 
+            <p>{props.name}</p> 
+            <button onClick={() => setCount()}>{count}</button> 
+            <button onClick={() => setCount2(count2 + 1) } > 
+                {count2} 
+            </button> 
+            {count % 2 ? <div>omg</div> : <span>123</span>} 
+            <ul>
+                {
+                    count2 === 2
+                        ? [2, 1, 3, 4].map((item) => {return <li key={item}>{item}</li>})
+                        :  [0, 1, 2, 3, 4].map((item) => {return <li key={item}>{item}</li>})
+                }
+            </ul> 
+        </div> 
+    ); 
+}
+```
+```js
+// 实现-ReactChildFiber.js
+import { createFiber } from "./ReactFiber";
+import { isArray, isStringOrNumber, Placement, Update } from "./utils";
+
+// returnFiber.deletions = [a,b,c]
+function deleteChild(returnFiber, childToDelete) {
+  const deletions = returnFiber.deletions;
+  if (deletions) {
+    returnFiber.deletions.push(childToDelete);
+  } else {
+    returnFiber.deletions = [childToDelete];
+  }
+}
+
+function deleteRemainingChildren(returnFiber, currentFirstChild) {
+  let childToDelete = currentFirstChild;
+
+  while (childToDelete) {
+    deleteChild(returnFiber, childToDelete);
+    childToDelete = childToDelete.sibling;
+  }
+}
+
+// 初次渲染，只是记录下标
+// 更新，检查节点是否移动
+function placeChild(
+  newFiber,
+  lastPlacedIndex,
+  newIndex,
+  shouldTrackSideEffects
+) {
+  newFiber.index = newIndex;
+  if (!shouldTrackSideEffects) {
+    // 父节点初次渲染
+    return lastPlacedIndex;
+  }
+  // 父节点更新
+  // 子节点是初次渲染还是更新呢
+  const current = newFiber.alternate;
+  if (current) {
+    const oldIndex = current.index;
+    // 子节点是更新
+    // lastPlacedIndex 记录了上次dom节点的相对更新节点的最远位置
+    // old 0 1 2 3 4
+    // new 2 1 3 4
+    // 2 1(6) 3 4
+    if (oldIndex < lastPlacedIndex) {
+      // move
+      newFiber.flags |= Placement;
+      return lastPlacedIndex;
+    } else {
+      return oldIndex;
+    }
+  } else {
+    // 子节点是初次渲染
+    newFiber.flags |= Placement;
+    return lastPlacedIndex;
+  }
+}
+
+function mapRemainingChildren(currentFirstChild) {
+  const existingChildren = new Map();
+
+  let existingChild = currentFirstChild;
+  while (existingChild) {
+    // key: value
+    // key||index: fiber
+    existingChildren.set(
+      existingChild.key || existingChild.index,
+      existingChild
+    );
+    existingChild = existingChild.sibling;
+  }
+
+  return existingChildren;
+}
+
+// 协调（diff）
+// abc
+// bc
+export function reconcileChildren(returnFiber, children) {
+  if (isStringOrNumber(children)) {
+    return;
+  }
+
+  const newChildren = isArray(children) ? children : [children];
+  // oldfiber的头结点
+  let oldFiber = returnFiber.alternate?.child;
+  // 下一个oldFiber | 暂时缓存下一个oldFiber
+  let nextOldFiber = null;
+  // 用于判断是returnFiber初次渲染还是更新
+  let shouldTrackSideEffects = !!returnFiber.alternate;
+  let previousNewFiber = null;
+  let newIndex = 0;
+  // 上一次dom节点插入的最远位置
+  // old 0 1 2 3 4
+  // new 2 1 3 4
+  let lastPlacedIndex = 0;
+
+  // *1. 从左边往右遍历，比较新老节点，如果节点可以复用，继续往右，否则就停止
+  for (; oldFiber && newIndex < newChildren.length; newIndex++) {
+    const newChild = newChildren[newIndex];
+    if (newChild == null) {
+      continue;
+    }
+
+    if (oldFiber.index > newIndex) {
+      nextOldFiber = oldFiber;
+      oldFiber = null;
+    } else {
+      nextOldFiber = oldFiber.sibling;
+    }
+
+    const same = sameNode(newChild, oldFiber);
+    if (!same) {
+      if (oldFiber == null) {
+        oldFiber = nextOldFiber;
+      }
+      break;
+    }
+    const newFiber = createFiber(newChild, returnFiber);
+
+    Object.assign(newFiber, {
+      stateNode: oldFiber.stateNode,
+      alternate: oldFiber,
+      flags: Update,
+    });
+
+    // 节点更新
+    lastPlacedIndex = placeChild(
+      newFiber,
+      lastPlacedIndex,
+      newIndex,
+      shouldTrackSideEffects
+    );
+
+    if (previousNewFiber == null) {
+      returnFiber.child = newFiber;
+    } else {
+      previousNewFiber.sibling = newFiber;
+    }
+
+    previousNewFiber = newFiber;
+    oldFiber = nextOldFiber;
+  }
+
+  // *2. 新节点没了，老节点还有
+  // 0 1 2
+  // 0
+  if (newIndex === newChildren.length) {
+    deleteRemainingChildren(returnFiber, oldFiber);
+    return;
+  }
+
+  // *3. 初次渲染
+  // 1）初次渲染
+  // 2）老节点没了，新节点还有
+  if (!oldFiber) {
+    for (; newIndex < newChildren.length; newIndex++) {
+      const newChild = newChildren[newIndex];
+      if (newChild == null) {
+        continue;
+      }
+      const newFiber = createFiber(newChild, returnFiber);
+
+      lastPlacedIndex = placeChild(
+        newFiber,
+        lastPlacedIndex,
+        newIndex,
+        shouldTrackSideEffects
+      );
+
+      if (previousNewFiber === null) {
+        // head node
+        returnFiber.child = newFiber;
+      } else {
+        previousNewFiber.sibling = newFiber;
+      }
+
+      previousNewFiber = newFiber;
+    }
+  }
+
+  // *4 新老节点都还有
+  // 小而乱
+  // old 0 1 [2 3 4]
+  // new 0 1 [3 4]
+  // !4.1 把剩下的old单链表构建哈希表
+  const existingChildren = mapRemainingChildren(oldFiber);
+
+  // !4.2 遍历新节点，通过新节点的key去哈希表中查找节点，找到就复用节点，并且删除哈希表中对应的节点
+  for (; newIndex < newChildren.length; newIndex++) {
+    const newChild = newChildren[newIndex];
+    if (newChild == null) {
+      continue;
+    }
+    const newFiber = createFiber(newChild, returnFiber);
+
+    // oldFiber
+    const matchedFiber = existingChildren.get(newFiber.key || newFiber.index);
+    if (matchedFiber) {
+      // 节点复用
+      Object.assign(newFiber, {
+        stateNode: matchedFiber.stateNode,
+        alternate: matchedFiber,
+        flags: Update,
+      });
+
+      existingChildren.delete(newFiber.key || newFiber.index);
+    }
+
+    lastPlacedIndex = placeChild(
+      newFiber,
+      lastPlacedIndex,
+      newIndex,
+      shouldTrackSideEffects
+    );
+
+    if (previousNewFiber == null) {
+      returnFiber.child = newFiber;
+    } else {
+      previousNewFiber.sibling = newFiber;
+    }
+    previousNewFiber = newFiber;
+  }
+
+  // *5 old的哈希表中还有值，遍历哈希表删除所有old
+  if (shouldTrackSideEffects) {
+    existingChildren.forEach((child) => deleteChild(returnFiber, child));
+  }
+}
+
+// 节点复用的条件：1. 同一层级下 2. 类型相同 3. key相同
+function sameNode(a, b) {
+  return a && b && a.type === b.type && a.key === b.key;
+}
+```
+```js
+// 实现-ReactFiberWorkLoop.js
+import {
+  updateClassComponent,
+  updateFragmentComponent,
+  updateFunctionComponent,
+  updateHostComponent,
+  updateHostTextComponent,
+} from "./ReactFiberReconciler";
+import {
+  ClassComponent,
+  Fragment,
+  FunctionComponent,
+  HostComponent,
+  HostText,
+} from "./ReactWorkTags";
+import { scheduleCallback } from "./scheduler";
+import { Placement, Update, updateNode } from "./utils";
+
+let wip = null; // work in progress 当前正在工作中的
+let wipRoot = null;
+
+// 初次渲染和更新
+export function scheduleUpdateOnFiber(fiber) {
+  wip = fiber;
+  wipRoot = fiber;
+
+  scheduleCallback(workLoop);
+}
+
+//
+function performUnitOfWork() {
+  const { tag } = wip;
+
+  // todo 1. 更新当前组件
+  switch (tag) {
+    case HostComponent:
+      updateHostComponent(wip);
+      break;
+
+    case FunctionComponent:
+      updateFunctionComponent(wip);
+      break;
+
+    case ClassComponent:
+      updateClassComponent(wip);
+      break;
+    case Fragment:
+      updateFragmentComponent(wip);
+      break;
+    case HostText:
+      updateHostTextComponent(wip);
+      break;
+    default:
+      break;
+  }
+
+  // todo 2. 下一个更新谁 深度优先遍历 （国王的故事）
+  if (wip.child) {
+    wip = wip.child;
+    return;
+  }
+
+  let next = wip;
+
+  while (next) {
+    if (next.sibling) {
+      wip = next.sibling;
+      return;
+    }
+    next = next.return;
+  }
+
+  wip = null;
+}
+
+function workLoop() {
+  while (wip) {
+    performUnitOfWork();
+  }
+
+  if (!wip && wipRoot) {
+    commitRoot();
+  }
+}
+
+// requestIdleCallback(workLoop);
+
+// 提交
+function commitRoot() {
+  commitWorker(wipRoot);
+  wipRoot = null;
+}
+
+function commitWorker(wip) {
+  if (!wip) {
+    return;
+  }
+
+  // 1. 提交自己
+  // parentNode是父DOM节点
+
+  const parentNode = getParentNode(wip.return); /// wip.return.stateNode;
+  const { flags, stateNode } = wip;
+  if (flags & Placement && stateNode) {
+    // 1
+    // 0 1 2 3 4
+    // 2 1 3 4
+    const before = getHostSibling(wip.sibling);
+    insertOrAppendPlacementNode(stateNode, before, parentNode);
+    // parentNode.appendChild(stateNode);
+  }
+
+  if (flags & Update && stateNode) {
+    // 更新属性
+    updateNode(stateNode, wip.alternate.props, wip.props);
+  }
+
+  if (wip.deletions) {
+    // 删除wip的子节点
+    commitDeletions(wip.deletions, stateNode || parentNode);
+  }
+
+  if (wip.tag === FunctionComponent) {
+    invokeHooks(wip);
+  }
+
+  // 2. 提交子节点
+  commitWorker(wip.child);
+  // 3. 提交兄弟
+  commitWorker(wip.sibling);
+}
+
+function getParentNode(wip) {
+  let tem = wip;
+  while (tem) {
+    if (tem.stateNode) {
+      return tem.stateNode;
+    }
+    tem = tem.return;
+  }
+}
+
+function commitDeletions(deletions, parentNode) {
+  for (let i = 0; i < deletions.length; i++) {
+    parentNode.removeChild(getStateNode(deletions[i]));
+  }
+}
+
+// 不是每个fiber都有dom节点
+function getStateNode(fiber) {
+  let tem = fiber;
+
+  while (!tem.stateNode) {
+    tem = tem.child;
+  }
+
+  return tem.stateNode;
+}
+
+function getHostSibling(sibling) {
+  while (sibling) {
+    if (sibling.stateNode && !(sibling.flags & Placement)) {
+      return sibling.stateNode;
+    }
+    sibling = sibling.sibling;
+  }
+  return null;
+}
+
+function insertOrAppendPlacementNode(stateNode, before, parentNode) {
+  if (before) {
+    parentNode.insertBefore(stateNode, before);
+  } else {
+    parentNode.appendChild(stateNode);
+  }
+}
+
+function invokeHooks(wip) {
+  const { updateQueueOfEffect, updateQueueOfLayout } = wip;
+
+  for (let i = 0; i < updateQueueOfLayout.length; i++) {
+    const effect = updateQueueOfLayout[i];
+    effect.create();
+  }
+
+  for (let i = 0; i < updateQueueOfEffect.length; i++) {
+    const effect = updateQueueOfEffect[i];
+
+    scheduleCallback(() => {
+      effect.create();
+    });
+  }
+}
+```
+
+# 对比React 与Vue的 VDOM DIFF
+![reactdiff](https://github.com/lujiajian1/geek-notes/blob/main/img/reactdiff.png)
+![vuediff](https://github.com/lujiajian1/geek-notes/blob/main/img/vuediff.png)
 
 
 
