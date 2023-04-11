@@ -12,19 +12,24 @@ export function createFiber(vnode, returnFiber) {
     type: vnode.type,
     key: vnode.key,
     props: vnode.props,
-    // 原生标签 DOM
+
+    // 不同类型的组件，stateNode 也不同
+    // 原生标签 DOM节点
     // class组件 实例
+    // 函数组件没有用到stateNode 是 null
     stateNode: null,
 
     // 第一个子fiber
     child: null,
     // 下一个兄弟fiber
     sibling: null,
+    // 父节点
     return: returnFiber,
 
     // 标记fiber任务类型，节点插入、更新、删除
     flags: Placement,
 
+    // 记录节点在当前层级的位置 
     index: null,
 
     // old fiber
