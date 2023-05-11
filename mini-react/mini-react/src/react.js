@@ -1,4 +1,4 @@
-import { Component } from "./ClassComponent";
-import { useReducer, useState } from "./hooks";
+import Component from "./Component";
+import { useReducer, useState, useEffect, useLayoutEffect } from "./hooks";
 
-export { Component, useReducer, useState };
+export { Component, useReducer, useState, useEffect, useLayoutEffect };

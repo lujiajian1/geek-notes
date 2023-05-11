@@ -1,21 +1,22 @@
-import { push, pop, peek } from "./minHeap";
+import { peek, pop, push } from "./minHeap";
 
 let taskQueue = [];
 let taskIdCounter = 1;
 
-// todo 优先级 延迟时间
 export function scheduleCallback(callback) {
-  const currentTime = getCurrentTime();
+  const currentTime = getCurrntTime();
 
   const timeout = -1;
-  const expirationTime = currentTime + timeout;
+
+  const expirtationTime = currentTime - timeout;
 
   const newTask = {
     id: taskIdCounter++,
     callback,
-    expirationTime,
-    sortIndex: expirationTime,
+    expirtationTime,
+    sortIndex: expirtationTime,
   };
+
   push(taskQueue, newTask);
 
   // 请求调度
@@ -43,6 +44,6 @@ function workLoop() {
   }
 }
 
-function getCurrentTime() {
+export function getCurrntTime() {
   return performance.now();
 }

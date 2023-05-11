@@ -28,7 +28,7 @@ React中用JSX语法描述视图(View)，~~通过babel-loader转译后它们变�
 #### [reconciliation协调](https://zh-hans.reactjs.org/docs/reconciliation.html)
 在某一时间节点调用 React 的 `render()` 方法，会创建一棵由 React 元素组成的树。在下一次 state 或 props 更新时，相同的 `render()` 方法会返回一棵不同的树。React 需要基于这两棵树之间的差别来判断如何有效率的更新 UI 以保证当前 UI 与最新的树保持同步。
 这个算法问题有一些通用的解决方案，即生成将一棵树转换成另一棵树的最小操作数。 然而，即使在[最前沿的算法中](http://grfia.dlsi.ua.es/ml/algorithms/references/editsurvey_bille.pdf)，该算法的复杂程度为 O(n3)，其中 n 是树中元素的数量。
-如果在 React 中使用了该算法，那么展示 1000 个元素所需要执行的计算量将在十亿的量级范围。这个开销实在是太过高昂。于是 React 在以下两个假设的基础之上提出了一套 O(n) 的启发式算法，并且在实践中，我们发现以上假设在几乎所有实用的场景下都成立。
+如果在 React 中使用了该算法，那么展示 1000 个元素所需要执行的计算量将在十亿的量级范围。这个开销实在是太过高昂。于是 React 在以下两个假设的基础之上提出了一套 O(n) 的启发式算法，并且在实践中，我们发现以下假设在几乎所有实用的场景下都成立。
 1. 两个不同类型的元素会产生出不同的树。
 2. 开发者可以通过 `key` prop 来暗示哪些子元素在不同的渲染下能保持稳定。
 
@@ -58,7 +58,7 @@ React中用JSX语法描述视图(View)，~~通过babel-loader转译后它们变�
 #### 什么是fiber
 A Fiber is work on a Component that needs to be done or was done. There can be more than one per component.
 fiber是指组件上将要完成或者已经完成的任务，每个组件可以一个或者多个。简而言之，fiber就是v16之后的虚拟DOM（React在遍历的节点的时候，并不是真正的DOM，而是采用虚拟的DOM）。
-![preview](https://pic2.zhimg.com/v2-d2c7de3c408badd0abeef40367d3fb19_r.jpg)
+![preview](https://github.com/lujiajian1/geek-notes/blob/main/img/preview.jpeg)
 
 # fiber构建与任务执行
 
@@ -1172,7 +1172,7 @@ export function useEffect(create, deps) {
 其函数签名与 useEffect 相同，但它会在所有的 DOM 变更之后同步调用 effect。可以使用它 来读取 DOM 布局并同步触发重渲染。在浏览器执行绘制之前， useLayoutEffect 内部的更新计 划将被同步刷新。
 尽可能使用标准的 useEffect 以避免阻塞视觉更新。
 
-## 实现useEffect
+## 实现useLayoutEffect
 ```js
 export const HookLayout = /*    */ 0b010;
 export function useLayoutEffect(create, deps) {
@@ -1860,3 +1860,4 @@ function invokeHooks(wip) {
 2. [React github](https://github.com/facebook/react/)
 3. [React18新特性尝试](https://github.com/bubucuo/react18-ice)
 4. [React18新特性免费视频教程](https://www.bilibili.com/video/BV1rK4y137D3/)
+5. [究竟什么是Shadow DOM？](https://zhuanlan.zhihu.com/p/559759502)
