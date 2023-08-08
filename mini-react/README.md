@@ -7,8 +7,16 @@ React 本身只是一个 DOM 的抽象层，使用组件构建虚拟 DOM。
 
 #### 传统dom渲染流程
 DOM操作很慢，轻微的操作都可能导致页面重新排版，非常耗性能。相对于DOM对象，js对象处理起来更快，而且更简单。通过diff算法对比新旧vdom之间的差异，可以批量的、最小化的执行dom操作，从而提升用户体验。
-React中用JSX语法描述视图(View)，~~通过babel-loader转译后它们变为 React.createElement(...)形式，该函数将生成vdom来描述真实dom。将来如果状态变化，vdom将作出相应变化，再通过diff算法对比新老vdom区别从而做出最终dom操作。
 ![传统dom渲染流程](https://github.com/lujiajian1/geek-notes/blob/main/img/dom.png)
+
+#### 为什么需要虚拟DOM
+DOM操作很慢，轻微的操作都可能导致页面重新排版，非常耗性能。相对于DOM对象，js对象处理起来更快，而且更简单。通过diff算法对比新旧vdom之间的差异，可以批量的、最小化的执行dom操作，从而提升用户体验。
+
+#### 为什么不直接 diff DOM对象
+DOM对象中的属性是非常多的，而大部分的属性是我们不会操作，也不会修改的，如果直接使用DOM对象diff，是非常消耗性能的，虚拟DOM就是把我们经常使用的属性抽取出来,放在一个对象中,然后通过diff算法对比新老vdom区别从而做出最终dom操作。
+
+#### React哪里使用了虚拟DOM
+React中用JSX语法描述视图(View)，~~通过babel-loader转译后它们变为 React.createElement(...)形式，该函数将生成vdom来描述真实dom。将来如果状态变化，vdom将作出相应变化，再通过diff算法对比新老vdom区别从而做出最终dom操作。（最新的jsx已经不用React.createElement(...)了，因为和balel合作了，集成了）
 
 #### JSX
 这个有趣的标签语法既不是字符串也不是 HTML，它是 JSX，是一个 JavaScript 的语法扩展，JSX 可以生成 React “元素”。从本质上来说，JSX 并不是一个新的模板语言，而可以认为是一个语法糖。也就是说，不用 JSX 的写法，使用React.createElement也是能够写React 的。
@@ -57,7 +65,7 @@ React中用JSX语法描述视图(View)，~~通过babel-loader转译后它们变�
 
 #### 什么是fiber
 A Fiber is work on a Component that needs to be done or was done. There can be more than one per component.
-fiber是指组件上将要完成或者已经完成的任务，每个组件可以一个或者多个。简而言之，fiber就是v16之后的虚拟DOM（React在遍历的节点的时候，并不是真正的DOM，而是采用虚拟的DOM）。
+fiber是指组件上将要完成或者已经完成的任务，每个组件可以一个或者多个。简而言之，fiber就是v16之后的虚拟DOM（结构变化的VDOM）（React在遍历的节点的时候，并不是真正的DOM，而是采用虚拟的DOM）。
 ![preview](https://github.com/lujiajian1/geek-notes/blob/main/img/preview.jpeg)
 
 # fiber构建与任务执行
@@ -918,7 +926,7 @@ React 没有提供将可复用性行为“附加”到组件的途径（例如�
 
 ## Hook原理
 ```jsx
-fiber.memorizedState(hook0)-> next(hook1)-> next(hook2)->next(hook3)(workInProgressHook)
+fiber.memorizedState(hook0)-> next(hook1)-> next(hook2)->next(hook3)(workInProgressHook) // 所以hook是不能放到条件语句中，必须放在最外层
 //let workInProgressHook = null
 //hook3
 hook = {
